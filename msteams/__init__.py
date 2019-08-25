@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+"""Wrapper objects for building and sending Message Cards."""
+
 from collections import OrderedDict, namedtuple
 import json
 import requests
@@ -9,12 +11,14 @@ import types
 Spec = namedtuple('Specification', ('expected_types', 'content'))
 Spec.__new__.__defaults__ = (None, ) * len(Spec._fields)
 
+
 def _snake_to_dromedary_case(string):
-    """Convert snake_case to dromedaryCase:"""
+    """Convert snake_case to dromedaryCase."""
     words = string.split('_')
     if len(words) > 1:
         words[1:] = [w.title() for w in words[1:]]
     return ''.join(words)
+
 
 def _viewitems(obj):
     """Python2/3 compatible iteration over ditionary."""
@@ -28,7 +32,10 @@ class CardObject(object):
     """Base class for card objects."""
 
     def __init__(self, **kwargs):
+        """Create CardObject.
 
+        Any of the CardObject fields can be set as keyword arguments.
+        """
         self._payload = OrderedDict()
         self._attrs = {}
 
@@ -55,9 +62,11 @@ class CardObject(object):
         self._attrs[field] = value
 
     def __getitem__(self, key):
+        """Return a field from CardObject."""
         return self._attrs[key]
 
     def __setitem__(self, key, value):
+        """Set field to CardObject."""
         self._set_field(key, value)
 
     @property
@@ -88,14 +97,18 @@ class CardObject(object):
 
 class ImageObject(CardObject):
     """Class representing a card image.
+
+    See the Microsoft documentation for more details:
     https://docs.microsoft.com/en-us/outlook/actionable-messages/message-card-reference#image-object
     """
+
     _fields = OrderedDict((
                 ('image', Spec((str, ))),
                 ('title', Spec((str, ))),
                 ))
 
     def __init__(self, image, title=None):
+        """Create image object."""
         super(ImageObject, self).__init__()
 
         self._set_field('image', image)
@@ -105,14 +118,18 @@ class ImageObject(CardObject):
 
 class Fact(CardObject):
     """Class wrapping a fact.
-    https://docs.microsoft.com/en-us/outlook/actionable-messages/message-card-reference#image-object
+
+    See Microsoft documentation for more details:
+    https://docs.microsoft.com/en-us/outlook/actionable-messages/message-card-reference#section-fields
     """
+
     _fields = OrderedDict((
                 ('name', Spec((str, ))),
                 ('value', Spec((str, ))),
                 ))
 
     def __init__(self, name, value):
+        """Create fact object."""
         super(Fact, self).__init__()
 
         self._set_field('name', name)
@@ -121,7 +138,9 @@ class Fact(CardObject):
 
 class UriTarget(CardObject):
     """Class wrapping a URI target.
-    https://docs.microsoft.com/en-us/outlook/actionable-messages/message-card-reference#image-object
+
+    See Microsoft documentation for more details:
+    https://docs.microsoft.com/en-us/outlook/actionable-messages/message-card-reference#openuri-action
     """
     _fields = OrderedDict((
                 ('os', Spec((str, ))),
