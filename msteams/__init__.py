@@ -1,20 +1,23 @@
 #!/usr/bin/env python
 
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 import json
 import requests
+import types
 
+
+Spec = namedtuple('Specification', ('expected_types', 'content'))
+Spec.__new__.__defaults__ = (None, ) * len(Spec._fields)
 
 def _snake_to_dromedary_case(string):
+    """Convert snake_case to dromedaryCase:"""
     words = string.split('_')
     if len(words) > 1:
         words[1:] = [w.title() for w in words[1:]]
     return ''.join(words)
 
 def _viewitems(obj):
-    """
-    Python2/3 compatible iteration over ditionary.
-    """
+    """Python2/3 compatible iteration over ditionary."""
     func = getattr(obj, "viewitems", None)
     if not func:
         func = obj.items
@@ -32,23 +35,24 @@ class CardObject(object):
         for name, value in _viewitems(kwargs):
             self._set_field(name, value)
 
-    def _set_field(self, name, value):
-        """Set card attribute."""
-        if name not in self._fields:
-            raise ValueError('Unknown field {}'.format(name))
+    def _set_field(self, field, value):
+        """Set attribute of CardObject. Check that the value is."""
+        if field not in self._fields:
+            raise ValueError('Unknown field {}'.format(field))
 
-        expected_types = self._fields[name]['expected']
+        expected_types = self._fields[field].expected_types
         if not any([type(value) == ft for ft in expected_types]):
             raise TypeError('Got wrong type for field "{}" ({}). Expected {}'
-                            .format(name, type(value), expected_types))
+                            .format(field, type(value), expected_types))
 
-        if 'content' in self._fields[name]:
-            content_type = self._fields[name]['content']
+        # Check contents for lists/tuples
+        content_type = self._fields[field].content
+        if content_type is not None:
             if not all([isinstance(entry, content_type) for entry in value]):
                 raise TypeError('All entries for {} should be of type {}'
-                                .format(name, content_type))
+                                .format(field, content_type))
 
-        self._attrs[name] = value
+        self._attrs[field] = value
 
     def __getitem__(self, key):
         return self._attrs[key]
@@ -87,8 +91,8 @@ class ImageObject(CardObject):
     https://docs.microsoft.com/en-us/outlook/actionable-messages/message-card-reference#image-object
     """
     _fields = OrderedDict((
-                ('image', {'expected': (str, )}),
-                ('title', {'expected': (str, )})
+                ('image', Spec((str, ))),
+                ('title', Spec((str, ))),
                 ))
 
     def __init__(self, image, title=None):
@@ -104,8 +108,8 @@ class Fact(CardObject):
     https://docs.microsoft.com/en-us/outlook/actionable-messages/message-card-reference#image-object
     """
     _fields = OrderedDict((
-                ('name', {'expected': (str, )}),
-                ('value', {'expected': (str, )})
+                ('name', Spec((str, ))),
+                ('value', Spec((str, ))),
                 ))
 
     def __init__(self, name, value):
@@ -120,8 +124,8 @@ class UriTarget(CardObject):
     https://docs.microsoft.com/en-us/outlook/actionable-messages/message-card-reference#image-object
     """
     _fields = OrderedDict((
-                ('os', {'expected': (str, )}),
-                ('uri', {'expected': (str, )})
+                ('os', Spec((str, ))),
+                ('uri', Spec((str, ))),
                 ))
 
     def __init__(self, os, uri):
@@ -141,8 +145,8 @@ class OpenUriAction(Action):
     """
 
     _fields = OrderedDict((
-                  ('name',    {'expected': (str, )}),
-                  ('targets', {'expected': (list, )}),
+                  ('name',    Spec((str, ))),
+                  ('targets', Spec((tuple, list), UriTarget)),
                   ))
 
     def __init__(self, name, targets):
@@ -180,8 +184,8 @@ class Header(CardObject):
     https://docs.microsoft.com/en-us/outlook/actionable-messages/message-card-reference#header
     """
     _fields = OrderedDict((
-                ('name', {'expected': (str, )}),
-                ('value', {'expected': (str, )})
+                ('name', Spec((str, ))),
+                ('value', Spec((str, ))),
                 ))
 
     def __init__(self, name, value):
@@ -197,12 +201,11 @@ class HttpPostAction(Action):
     """
 
     _fields = OrderedDict((
-                  ('name',              {'expected': (str, )}),
-                  ('target',            {'expected': (str, )}),
-                  ('headers',           {'expected': (tuple, list),
-                                         'content': Header}),
-                  ('body',              {'expected': (str, )}),
-                  ('body_content_type', {'expected': (str, )}),
+                  ('name',              Spec((str, ))),
+                  ('target',            Spec((str, ))),
+                  ('headers',           Spec((tuple, list, dict), Header)),
+                  ('body',              Spec((str, ))),
+                  ('body_content_type', Spec((str, ))),
                   ))
 
     def __init__(self, name, target):
@@ -217,6 +220,30 @@ class HttpPostAction(Action):
         self._set_field('name', name)
         self._set_field('target', target)
 
+    def set_headers(self, headers):
+        """Set headers for HttpPostAction."""
+        if isinstance(headers, dict):
+            header_list = []
+            for name, value in _viewitems(headers):
+                header_list.append(Header(name=name, value=value))
+        else:
+            header_list = headers
+        self._set_field('headers', header_list)
+
+    def add_header(self, header):
+        """Add header to header list."""
+        header_list = self._attrs.get('headers', [])
+        header_list.append(header)
+        self._set_field('headers', header_list)
+
+    def set_body(self, body):
+        """Set body for HttpPostAction."""
+        self._set_field('body', body)
+
+    def set_body_content_type(self, body_content_type):
+        """Set body for HttpPostAction."""
+        self._set_field('body_content_type', body_content_type)
+
 
 class CardSection(CardObject):
     """
@@ -225,18 +252,16 @@ class CardSection(CardObject):
     """
 
     _fields = OrderedDict((
-                ('title',             {'expected': (str, )}),
-                ('start_group',       {'expected': (bool, )}),
-                ('activity_image',    {'expected': (str, )}),
-                ('activity_title',    {'expected': (str, )}),
-                ('activity_subtitle', {'expected': (str, )}),
-                ('activity_text',     {'expected': (str, )}),
-                ('hero_image',        {'expected': (ImageObject, str)}),
-                ('text',              {'expected': (str, )}),
-                ('facts',             {'expected': (list, tuple, dict),
-                                       'content': Fact}),
-                ('potential_action',  {'expected': (list, tuple),
-                                       'content': Action}),
+                ('title',             Spec((str, ))),
+                ('start_group',       Spec((bool, ))),
+                ('activity_image',    Spec((str, ))),
+                ('activity_title',    Spec((str, ))),
+                ('activity_subtitle', Spec((str, ))),
+                ('activity_text',     Spec((str, ))),
+                ('hero_image',        Spec((ImageObject, str))),
+                ('text',              Spec((str, ))),
+                ('facts',             Spec((tuple, list, dict), Fact)),
+                ('potential_action',  Spec((tuple, list), Action)),
                 ))
 
     def set_title(self, title):
@@ -321,14 +346,12 @@ class MessageCard(CardObject):
     https://docs.microsoft.com/en-us/outlook/actionable-messages/message-card-reference
     """
     _fields = OrderedDict((
-                ('summary',           {'expected': (str, )}),
-                ('title',             {'expected': (str, )}),
-                ('text',              {'expected': (str, )}),
-                ('theme_color',       {'expected': (str, )}),
-                ('sections',          {'expected': (list, tuple),
-                                       'content': CardSection}),
-                ('potential_actions', {'expected': (list, tuple),
-                                       'content': Action})
+                ('summary',           Spec((str, ))),
+                ('title',             Spec((str, ))),
+                ('text',              Spec((str, ))),
+                ('theme_color',       Spec((str, ))),
+                ('sections',          Spec((tuple, list), CardSection)),
+                ('potential_actions', Spec((tuple, list), Action)),
                 ))
 
     def __init__(self, **kwargs):
@@ -430,7 +453,8 @@ if __name__ == '__main__':
     section.add_potential_action(action)
 
     post_action = HttpPostAction('Send comment', 'http://comment.com')
-    post_action['body'] = 'Post body'
+    post_action.set_headers({'http': 'yes', 'some_header': 'false'})
+    post_action.add_header(Header('asdf', 'fdas'))
     section.add_potential_action(post_action)
 
     card.add_section(section)
