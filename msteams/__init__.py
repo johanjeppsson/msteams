@@ -69,6 +69,17 @@ class CardObject(object):
         """Set field to CardObject."""
         self._set_field(key, value)
 
+    def __str__(self):
+        """Return a string representation of the CardObject."""
+        return '{}({})'.format(self.__class__.__name__,
+                               ', '.join(self._attrs.keys()))
+
+    def __repr__(self):
+        """Return a string representation of the CardObject."""
+        kv_paris = ['{} = {}'.format(k, v) for k, v in _viewitems(self._attrs)]
+        return '{}({})'.format(self.__class__.__name__,
+                               ', '.join(kv_paris))
+
     @property
     def payload(self):
         """Payload on python format."""
