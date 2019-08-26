@@ -13,7 +13,13 @@ Spec.__new__.__defaults__ = (None, ) * len(Spec._fields)
 
 
 def _snake_to_dromedary_case(string):
-    """Convert snake_case to dromedaryCase."""
+    """Convert snake_case to dromedaryCase.
+
+    >>> _snake_to_dromedary_case('snake_case')
+    'snakeCase'
+    >>> _snake_to_dromedary_case('longer_snake_case_name')
+    'longerSnakeCaseName'
+    """
     words = string.split('_')
     if len(words) > 1:
         words[1:] = [w.title() for w in words[1:]]
@@ -90,7 +96,7 @@ class CardObject(object):
         """Payload on json format expected by Teams."""
         return self.get_payload(fmt='json')
 
-    def get_payload(self, fmt='python'):
+    def get_payload(self, fmt='python', indent=None):
         """Return card payload on python or json format."""
         payload = self._payload.copy()
         for field_name in self._fields.keys():
@@ -102,7 +108,8 @@ class CardObject(object):
                     value = [v.payload for v in value]
                 payload[_snake_to_dromedary_case(field_name)] = value
         if fmt == 'json':
-            payload = json.dumps(payload)
+            separators = (',', ': ') if indent is not None else (', ', ': ')
+            payload = json.dumps(payload, indent=indent, separators=separators)
         return payload
 
 
@@ -111,6 +118,13 @@ class ImageObject(CardObject):
 
     See the Microsoft documentation for more details:
     https://docs.microsoft.com/en-us/outlook/actionable-messages/message-card-reference#image-object
+
+    >>> im = ImageObject('http://www.image.com')
+    >>> print(im.json_payload)
+    {"image": "http://www.image.com"}
+    >>> im.set_title('Image title')
+    >>> print(im.json_payload)
+    {"image": "http://www.image.com", "title": "Image title"}
     """
 
     _fields = OrderedDict((
@@ -126,12 +140,20 @@ class ImageObject(CardObject):
         if title is not None:
             self._set_field('title', title)
 
+    def set_title(self, title):
+        """Set image title."""
+        self._set_field('title', title)
+
 
 class Fact(CardObject):
     """Class wrapping a fact.
 
     See Microsoft documentation for more details:
     https://docs.microsoft.com/en-us/outlook/actionable-messages/message-card-reference#section-fields
+
+    >>> f = Fact('name', 'value')
+    >>> print(f.json_payload)
+    {"name": "name", "value": "value"}
     """
 
     _fields = OrderedDict((
@@ -152,6 +174,12 @@ class UriTarget(CardObject):
 
     See Microsoft documentation for more details:
     https://docs.microsoft.com/en-us/outlook/actionable-messages/message-card-reference#openuri-action
+
+    >>> ut = UriTarget(os='default', uri='http://www.python.org')
+    >>> print(ut.json_payload)
+    {"os": "default", "uri": "http://www.python.org"}
+    >>> print(ut.payload)
+    OrderedDict([('os', 'default'), ('uri', 'http://www.python.org')])
     """
     _fields = OrderedDict((
                 ('os', Spec((str, ))),
@@ -164,7 +192,6 @@ class UriTarget(CardObject):
         self._set_field('os', os)
         self._set_field('uri', uri)
 
-
 class Action(CardObject):
     """Base class for Action objects."""
 
@@ -176,7 +203,7 @@ class OpenUriAction(Action):
 
     _fields = OrderedDict((
                   ('name',    Spec((str, ))),
-                  ('targets', Spec((tuple, list), UriTarget)),
+                  ('targets', Spec((tuple, list, dict), UriTarget)),
                   ))
 
     def __init__(self, name, targets):
@@ -186,6 +213,16 @@ class OpenUriAction(Action):
         targets -- The target URIs.
                    Either a string with the URI, or a dict with OS, URI pairs.
         https://docs.microsoft.com/en-us/outlook/actionable-messages/message-card-reference#openuri-action
+
+        >>> action = OpenUriAction(name='Open URL', targets='http://www.python.org')
+        >>> print(action.json_payload)
+        {"@type": "OpenUri", "name": "Open URL", "targets": [{"os": "default", "uri": "http://www.python.org"}]}
+        >>> action.add_target(os='android', uri='http://www.python.org')
+        >>> print(action.json_payload)
+        {"@type": "OpenUri", "name": "Open URL", "targets": [{"os": "default", "uri": "http://www.python.org"}, {"os": "android", "uri": "http://www.python.org"}]}
+        >>> action = OpenUriAction(name='Open URL', targets={'default': 'http://www.python.org'})
+        >>> print(action.json_payload)
+        {"@type": "OpenUri", "name": "Open URL", "targets": [{"os": "default", "uri": "http://www.python.org"}]}
         """
         super(OpenUriAction, self).__init__()
 
@@ -198,6 +235,9 @@ class OpenUriAction(Action):
                 target_list.append(UriTarget(os=os, uri=uri))
         elif isinstance(targets, str):
             target_list.append(UriTarget(os='default', uri=targets))
+        else:
+            raise ValueError('Unexpected type for targets. Expected string or dict, got {}'
+                             .format(type(targets)))
         self._set_field('targets', target_list)
 
     def add_target(self, os, uri):
@@ -212,6 +252,7 @@ class OpenUriAction(Action):
 class Header(CardObject):
     """Class wrapping a header.
     https://docs.microsoft.com/en-us/outlook/actionable-messages/message-card-reference#header
+
     """
     _fields = OrderedDict((
                 ('name', Spec((str, ))),
@@ -219,6 +260,13 @@ class Header(CardObject):
                 ))
 
     def __init__(self, name, value):
+        """
+        Create header object.
+
+        >>> h = Header('Header name', 'Header value')
+        >>> print(h.json_payload)
+        {"name": "Header name", "value": "Header value"}
+        """
         super(Header, self).__init__()
 
         self._set_field('name', name)
@@ -238,12 +286,40 @@ class HttpPostAction(Action):
                   ('body_content_type', Spec((str, ))),
                   ))
 
-    def __init__(self, name, target):
-        """Create OpenUri action.
+    def __init__(self, name, target, **kwargs):
+        """Create HttpPost action.
 
         https://docs.microsoft.com/en-us/outlook/actionable-messages/message-card-reference#httppost-action
+
+        >>> action = HttpPostAction(name='Run tests', target='http://jenkins.com?aciton=trigger')
+        >>> print(action.json_payload)
+        {"@type": "HttpPOST", "name": "Run tests", "target": "http://jenkins.com?aciton=trigger"}
+        >>> action.set_headers({'Header name': 'Header value'})
+        >>> print(action.json_payload)
+        {"@type": "HttpPOST", "name": "Run tests", "target": "http://jenkins.com?aciton=trigger", "headers": [{"name": "Header name", "value": "Header value"}]}
+        >>> action.add_header({'header2': 'value2'})
+        >>> print(action.json_payload)
+        {"@type": "HttpPOST", "name": "Run tests", "target": "http://jenkins.com?aciton=trigger", "headers": [{"name": "Header name", "value": "Header value"}, {"name": "header2", "value": "value2"}]}
+        >>> action.set_body('Body content')
+        >>> print(action.get_payload(fmt='json', indent=4))
+        {
+            "@type": "HttpPOST",
+            "name": "Run tests",
+            "target": "http://jenkins.com?aciton=trigger",
+            "headers": [
+                {
+                    "name": "Header name",
+                    "value": "Header value"
+                },
+                {
+                    "name": "header2",
+                    "value": "value2"
+                }
+            ],
+            "body": "Body content"
+        }
         """
-        super(HttpPostAction, self).__init__()
+        super(HttpPostAction, self).__init__(**kwargs)
 
         self._payload['@type'] = 'HttpPOST'
 
@@ -256,13 +332,20 @@ class HttpPostAction(Action):
             header_list = []
             for name, value in _viewitems(headers):
                 header_list.append(Header(name=name, value=value))
-        else:
+        elif isinstance(headers, list) or isinstance(headers, tuple):
             header_list = headers
+        else:
+            raise ValueError('Got unexpected type for argument headers. Expected dict, list or tuple, got {}'.format(type(headers)))
+
         self._set_field('headers', header_list)
 
     def add_header(self, header):
         """Add header to header list."""
         header_list = self._attrs.get('headers', [])
+        if isinstance(header, dict):
+            assert(len(header) == 1)
+            name = next(iter(header.keys()))
+            header = Header(name=name, value=header[name])
         header_list.append(header)
         self._set_field('headers', header_list)
 
@@ -471,24 +554,26 @@ def send_message(card, channel):
 
 
 if __name__ == '__main__':
-    card = MessageCard(title='Descriptive title')
-    card.set_summary('Brief summary')
-    section = CardSection(title='Section title')
-    section.set_hero_image('http://url', title='asdf')
-    section.set_facts({'fact1': 'a', 'fact2': 'b'})
-    section.add_fact('fact3', 'c')
-    section.add_fact(Fact('fact4', 'd'))
-    action = OpenUriAction('Open github', 'http://github.com')
-    action.add_target('android', 'http://m.github.com')
-    section.add_potential_action(action)
+    import doctest
+    doctest.testmod()
+    # card = MessageCard(title='Descriptive title')
+    # card.set_summary('Brief summary')
+    # section = CardSection(title='Section title')
+    # section.set_hero_image('http://url', title='asdf')
+    # section.set_facts({'fact1': 'a', 'fact2': 'b'})
+    # section.add_fact('fact3', 'c')
+    # section.add_fact(Fact('fact4', 'd'))
+    # action = OpenUriAction('Open github', 'http://github.com')
+    # action.add_target('android', 'http://m.github.com')
+    # section.add_potential_action(action)
 
-    post_action = HttpPostAction('Send comment', 'http://comment.com')
-    post_action.set_headers({'http': 'yes', 'some_header': 'false'})
-    post_action.add_header(Header('asdf', 'fdas'))
-    section.add_potential_action(post_action)
+    # post_action = HttpPostAction('Send comment', 'http://comment.com')
+    # post_action.set_headers({'http': 'yes', 'some_header': 'false'})
+    # post_action.add_header(Header('asdf', 'fdas'))
+    # section.add_potential_action(post_action)
 
-    card.add_section(section)
-    print(card.payload)
-    print(card.json_payload)
-    print(json.dumps(card.payload, indent=4))
-    print(isinstance(OrderedDict(), dict))
+    # card.add_section(section)
+    # print(card.payload)
+    # print(card.json_payload)
+    # print(json.dumps(card.payload, indent=4))
+    # print(isinstance(OrderedDict(), dict))
