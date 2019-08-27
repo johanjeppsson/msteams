@@ -8,8 +8,8 @@ import requests
 import types
 
 
-Spec = namedtuple('Specification', ('expected_types', 'content'))
-Spec.__new__.__defaults__ = (None, ) * len(Spec._fields)
+Spec = namedtuple('Specification', ('expected_type', 'allow_iter'))
+Spec.__new__.__defaults__ = (None, False)
 
 
 def _snake_to_dromedary_case(string):
@@ -34,6 +34,11 @@ def _viewitems(obj):
     return func()
 
 
+def _is_iter(val):
+    """Check if value is of accepted iterable type."""
+    return type(val) in [tuple, list]
+
+
 class CardObject(object):
     """Base class for card objects."""
 
@@ -48,24 +53,41 @@ class CardObject(object):
         for name, value in _viewitems(kwargs):
             self._set_field(name, value)
 
-    def _set_field(self, field, value):
-        """Set attribute of CardObject. Check that the value is."""
+    def _check_value(self, field, value):
+        """Check if value is or or can be converted to the correct type."""
         if field not in self._fields:
             raise ValueError('Unknown field {}'.format(field))
 
-        expected_types = self._fields[field].expected_types
-        if not any([type(value) == ft for ft in expected_types]):
-            raise TypeError('Got wrong type for field "{}" ({}). Expected {}'
-                            .format(field, type(value), expected_types))
+        exp_type = self._fields[field].expected_type
+        allow_iter = self._fields[field].allow_iter
 
-        # Check contents for lists/tuples
-        content_type = self._fields[field].content
-        if content_type is not None:
-            if not all([isinstance(entry, content_type) for entry in value]):
-                raise TypeError('All entries for {} should be of type {}'
-                                .format(field, content_type))
+        if _is_iter(value) and allow_iter:
+            wrong_types = [type(v) is not exp_type for v in value]
+            if any(wrong_types):
+                wrong_type = type(value[wrong_types.index(True)])
+                raise TypeError('Got iterable containing object of incorrect '
+                                ' type ({}). Expected {}'
+                                .format(wrong_type, exp_type))
+            return value
 
-        self._attrs[field] = value
+        if type(value) is not exp_type:
+            # Try to find converter
+            conv_name = 'from_{}'.format(type(value).__name__)
+            if not hasattr(exp_type, conv_name):
+                raise TypeError('Got argument of wrong type ({}). Expected {}'
+                                .format(type(value), exp_type))
+            value = getattr(exp_type, conv_name)(value)
+
+        if not _is_iter(value) and allow_iter:
+            value = [value]
+
+        return value
+
+    def _set_field(self, field, value):
+        """Sanitize and set attribute of CardObject."""
+
+        sanitized_value = self._check_value(field, value)
+        self._attrs[field] = sanitized_value
 
     def __getitem__(self, key):
         """Return a field from CardObject."""
@@ -128,8 +150,8 @@ class ImageObject(CardObject):
     """
 
     _fields = OrderedDict((
-                ('image', Spec((str, ))),
-                ('title', Spec((str, ))),
+                ('image', Spec(str, False)),
+                ('title', Spec(str, False)),
                 ))
 
     def __init__(self, image, title=None):
@@ -157,8 +179,8 @@ class Fact(CardObject):
     """
 
     _fields = OrderedDict((
-                ('name', Spec((str, ))),
-                ('value', Spec((str, ))),
+                ('name', Spec(str, False)),
+                ('value', Spec(str, False)),
                 ))
 
     def __init__(self, name, value):
@@ -167,6 +189,14 @@ class Fact(CardObject):
 
         self._set_field('name', name)
         self._set_field('value', value)
+
+    @classmethod
+    def from_dict(cls, d):
+        """Create list of facts from dict."""
+        facts = []
+        for name, value in _viewitems(d):
+            facts.append(Fact(name, value))
+        return facts
 
 
 class UriTarget(CardObject):
@@ -182,8 +212,8 @@ class UriTarget(CardObject):
     OrderedDict([('os', 'default'), ('uri', 'http://www.python.org')])
     """
     _fields = OrderedDict((
-                ('os', Spec((str, ))),
-                ('uri', Spec((str, ))),
+                ('os', Spec(str, False)),
+                ('uri', Spec(str, False)),
                 ))
 
     def __init__(self, os, uri):
@@ -191,6 +221,15 @@ class UriTarget(CardObject):
 
         self._set_field('os', os)
         self._set_field('uri', uri)
+
+    @classmethod
+    def from_dict(cls, d):
+        """Create list of UriTargets from dict."""
+        targets = []
+        for name, value in _viewitems(d):
+            targets.append(UriTarget(name, value))
+        return targets
+
 
 class Action(CardObject):
     """Base class for Action objects."""
@@ -202,8 +241,8 @@ class OpenUriAction(Action):
     """
 
     _fields = OrderedDict((
-                  ('name',    Spec((str, ))),
-                  ('targets', Spec((tuple, list, dict), UriTarget)),
+                  ('name',    Spec(str, False)),
+                  ('targets', Spec(UriTarget, True)),
                   ))
 
     def __init__(self, name, targets):
@@ -255,8 +294,8 @@ class Header(CardObject):
 
     """
     _fields = OrderedDict((
-                ('name', Spec((str, ))),
-                ('value', Spec((str, ))),
+                ('name', Spec(str, False)),
+                ('value', Spec(str, False)),
                 ))
 
     def __init__(self, name, value):
@@ -272,6 +311,14 @@ class Header(CardObject):
         self._set_field('name', name)
         self._set_field('value', value)
 
+    @classmethod
+    def from_dict(cls, d):
+        """Create list of headers from dict."""
+        headers = []
+        for name, value in _viewitems(d):
+            headers.append(Header(name, value))
+        return headers
+
 
 class HttpPostAction(Action):
     """HTTP Post action
@@ -279,11 +326,11 @@ class HttpPostAction(Action):
     """
 
     _fields = OrderedDict((
-                  ('name',              Spec((str, ))),
-                  ('target',            Spec((str, ))),
-                  ('headers',           Spec((tuple, list, dict), Header)),
-                  ('body',              Spec((str, ))),
-                  ('body_content_type', Spec((str, ))),
+                  ('name',              Spec(str, False)),
+                  ('target',            Spec(str, False)),
+                  ('headers',           Spec(Header, True)),
+                  ('body',              Spec(str, False)),
+                  ('body_content_type', Spec(str, False)),
                   ))
 
     def __init__(self, name, target, **kwargs):
@@ -365,16 +412,16 @@ class CardSection(CardObject):
     """
 
     _fields = OrderedDict((
-                ('title',             Spec((str, ))),
-                ('start_group',       Spec((bool, ))),
-                ('activity_image',    Spec((str, ))),
-                ('activity_title',    Spec((str, ))),
-                ('activity_subtitle', Spec((str, ))),
-                ('activity_text',     Spec((str, ))),
-                ('hero_image',        Spec((ImageObject, str))),
-                ('text',              Spec((str, ))),
-                ('facts',             Spec((tuple, list, dict), Fact)),
-                ('potential_action',  Spec((tuple, list), Action)),
+                ('title',             Spec(str, False)),
+                ('start_group',       Spec(bool, False)),
+                ('activity_image',    Spec(str, False)),
+                ('activity_title',    Spec(str, False)),
+                ('activity_subtitle', Spec(str, False)),
+                ('activity_text',     Spec(str, False)),
+                ('hero_image',        Spec(ImageObject, False)),
+                ('text',              Spec(str, False)),
+                ('facts',             Spec(Fact, True)),
+                ('potential_action',  Spec(Action, True)),
                 ))
 
     def set_title(self, title):
@@ -433,14 +480,21 @@ class CardSection(CardObject):
     def add_fact(self, fact, value=None):
         """Append fact to facts section.
 
-        fact -- Fact or fact name (str)
-        value -- fact value. Only used if fact is a string.
+        fact -- Fact name (str)
+        value -- fact value (str)
         """
         facts = list(self._attrs.get('facts', []))
-        if not isinstance(fact, Fact):
-            fact = Fact(name=fact, value=value)
-        facts.append(fact)
+        facts.append(Fact(name=fact, value=value))
         self._set_field('facts', facts)
+
+    def add_facts(self, facts):
+        """Append facts to card.
+
+        facts: tuple or list containing Facts, or dict with key/value pairs.
+        """
+        fact_list = list(self._attrs.get('facts', []))
+        fact_list.extend(self._check_value('facts', facts))
+        self._set_field('facts', fact_list)
 
     def add_potential_action(self, potential_action):
         """Append a PotentialAction object to the section."""
@@ -459,12 +513,12 @@ class MessageCard(CardObject):
     https://docs.microsoft.com/en-us/outlook/actionable-messages/message-card-reference
     """
     _fields = OrderedDict((
-                ('summary',           Spec((str, ))),
-                ('title',             Spec((str, ))),
-                ('text',              Spec((str, ))),
-                ('theme_color',       Spec((str, ))),
-                ('sections',          Spec((tuple, list), CardSection)),
-                ('potential_actions', Spec((tuple, list), Action)),
+                ('summary',           Spec(str, False)),
+                ('title',             Spec(str, False)),
+                ('text',              Spec(str, False)),
+                ('theme_color',       Spec(str, False)),
+                ('sections',          Spec(CardSection, True)),
+                ('potential_actions', Spec(Action, True)),
                 ))
 
     def __init__(self, **kwargs):
