@@ -8,8 +8,8 @@ import requests
 import types
 
 
-Spec = namedtuple('Specification', ('expected_type', 'allow_iter'))
-Spec.__new__.__defaults__ = (None, False)
+Field = namedtuple('Specification', ('expected_type', 'allow_iter'))
+Field.__new__.__defaults__ = (None, False)
 
 
 def _snake_to_dromedary_case(string):
@@ -150,8 +150,8 @@ class ImageObject(CardObject):
     """
 
     _fields = OrderedDict((
-                ('image', Spec(str, False)),
-                ('title', Spec(str, False)),
+                ('image', Field(str, False)),
+                ('title', Field(str, False)),
                 ))
 
     def __init__(self, image, title=None):
@@ -179,8 +179,8 @@ class Fact(CardObject):
     """
 
     _fields = OrderedDict((
-                ('name', Spec(str, False)),
-                ('value', Spec(str, False)),
+                ('name', Field(str, False)),
+                ('value', Field(str, False)),
                 ))
 
     def __init__(self, name, value):
@@ -212,8 +212,8 @@ class UriTarget(CardObject):
     OrderedDict([('os', 'default'), ('uri', 'http://www.python.org')])
     """
     _fields = OrderedDict((
-                ('os', Spec(str, False)),
-                ('uri', Spec(str, False)),
+                ('os', Field(str, False)),
+                ('uri', Field(str, False)),
                 ))
 
     def __init__(self, os, uri):
@@ -241,8 +241,8 @@ class OpenUriAction(Action):
     """
 
     _fields = OrderedDict((
-                  ('name',    Spec(str, False)),
-                  ('targets', Spec(UriTarget, True)),
+                  ('name',    Field(str, False)),
+                  ('targets', Field(UriTarget, True)),
                   ))
 
     def __init__(self, name, targets):
@@ -294,8 +294,8 @@ class Header(CardObject):
 
     """
     _fields = OrderedDict((
-                ('name', Spec(str, False)),
-                ('value', Spec(str, False)),
+                ('name', Field(str, False)),
+                ('value', Field(str, False)),
                 ))
 
     def __init__(self, name, value):
@@ -326,11 +326,11 @@ class HttpPostAction(Action):
     """
 
     _fields = OrderedDict((
-                  ('name',              Spec(str, False)),
-                  ('target',            Spec(str, False)),
-                  ('headers',           Spec(Header, True)),
-                  ('body',              Spec(str, False)),
-                  ('body_content_type', Spec(str, False)),
+                  ('name',              Field(str, False)),
+                  ('target',            Field(str, False)),
+                  ('headers',           Field(Header, True)),
+                  ('body',              Field(str, False)),
+                  ('body_content_type', Field(str, False)),
                   ))
 
     def __init__(self, name, target, **kwargs):
@@ -412,16 +412,16 @@ class CardSection(CardObject):
     """
 
     _fields = OrderedDict((
-                ('title',             Spec(str, False)),
-                ('start_group',       Spec(bool, False)),
-                ('activity_image',    Spec(str, False)),
-                ('activity_title',    Spec(str, False)),
-                ('activity_subtitle', Spec(str, False)),
-                ('activity_text',     Spec(str, False)),
-                ('hero_image',        Spec(ImageObject, False)),
-                ('text',              Spec(str, False)),
-                ('facts',             Spec(Fact, True)),
-                ('potential_action',  Spec(Action, True)),
+                ('title',             Field(str, False)),
+                ('start_group',       Field(bool, False)),
+                ('activity_image',    Field(str, False)),
+                ('activity_title',    Field(str, False)),
+                ('activity_subtitle', Field(str, False)),
+                ('activity_text',     Field(str, False)),
+                ('hero_image',        Field(ImageObject, False)),
+                ('text',              Field(str, False)),
+                ('facts',             Field(Fact, True)),
+                ('potential_action',  Field(Action, True)),
                 ))
 
     def set_title(self, title):
@@ -513,12 +513,12 @@ class MessageCard(CardObject):
     https://docs.microsoft.com/en-us/outlook/actionable-messages/message-card-reference
     """
     _fields = OrderedDict((
-                ('summary',           Spec(str, False)),
-                ('title',             Spec(str, False)),
-                ('text',              Spec(str, False)),
-                ('theme_color',       Spec(str, False)),
-                ('sections',          Spec(CardSection, True)),
-                ('potential_actions', Spec(Action, True)),
+                ('summary',           Field(str, False)),
+                ('title',             Field(str, False)),
+                ('text',              Field(str, False)),
+                ('theme_color',       Field(str, False)),
+                ('sections',          Field(CardSection, True)),
+                ('potential_actions', Field(Action, True)),
                 ))
 
     def __init__(self, **kwargs):
