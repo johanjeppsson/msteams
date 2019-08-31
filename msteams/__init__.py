@@ -162,6 +162,17 @@ class ImageObject(CardObject):
         if title is not None:
             self._set_field('title', title)
 
+    @classmethod
+    def from_dict(cls, d):
+        """Create an ImageObject from dict."""
+        title, image = list(_viewitems(d))[0]
+        return ImageObject(image=image, title=title)
+
+    @classmethod
+    def from_str(cls, s):
+        """Create an ImageObject from string."""
+        return ImageObject(image=s)
+
     def set_title(self, title):
         """Set image title."""
         self._set_field('title', title)
@@ -375,16 +386,7 @@ class HttpPostAction(Action):
 
     def set_headers(self, headers):
         """Set headers for HttpPostAction."""
-        if isinstance(headers, dict):
-            header_list = []
-            for name, value in _viewitems(headers):
-                header_list.append(Header(name=name, value=value))
-        elif isinstance(headers, list) or isinstance(headers, tuple):
-            header_list = headers
-        else:
-            raise ValueError('Got unexpected type for argument headers. Expected dict, list or tuple, got {}'.format(type(headers)))
-
-        self._set_field('headers', header_list)
+        self._set_field('headers', headers)
 
     def add_header(self, header):
         """Add header to header list."""
@@ -453,15 +455,11 @@ class CardSection(CardObject):
         if image_url is not None:
             self.set_activity_image(image_url)
 
-    def set_hero_image(self, image, title=None):
+    def set_hero_image(self, image):
         """Set hero image of section.
 
-        image -- Image or image url as string.
-        title -- Optional title. Only used if image is a string,
-                 otherwise the title from Image is used
+        image -- ImageObject, image url as string or dict with {'title': 'url'}.
         """
-        if not isinstance(image, ImageObject):
-            image = ImageObject(image=image, title=title)
         self._set_field('hero_image', image)
 
     def set_text(self, text):
@@ -473,8 +471,6 @@ class CardSection(CardObject):
 
         facts -- Can be a list/tuple of Facts, or a dict with key/value pairs.
         """
-        if isinstance(facts, dict):
-            facts = tuple(Fact(k, v) for k, v in _viewitems(facts))
         self._set_field('facts', facts)
 
     def add_fact(self, fact, value=None):
