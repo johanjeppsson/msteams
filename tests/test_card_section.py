@@ -1,12 +1,14 @@
-from msteams import *
-
-from collections import OrderedDict
 import json
+from collections import OrderedDict
+
+import pytest
+
+from msteams import CardSection, Fact, HttpPostAction, ImageObject
 
 EXPECTED_ACTIVITY = OrderedDict((
     ("activityTitle", "John Doe"),
     ("activitySubtitle", "10/2/2019, 21:54"),
-    ("activityImage", "https://sv.wikipedia.org/wiki/John_Doe#/media/Fil:Osa_id_card.svg"),
+    ("activityImage", "https://tinyurl.com/y4nxy7fj"),
 ))
 EXPECTED_FACTS = {
     "facts": [
@@ -28,16 +30,28 @@ EXPECTED_FACTS = {
         )),
     ]
 }
-EXPECTED_TEXT = {"text": "Lorem ipsum dolor sit amet"}
-EXPECTED_HERO = {"heroImage": {"image": 'https://everydayheroes-rac.stickyhosting.co.uk/images/Everyday-hero%20intro.png',
-                               "title": "Everyday Hero"}}
-EXPECTED_TITLE = {"title": "Card title"}
+EXPECTED_TEXT = OrderedDict({"text": "Lorem ipsum dolor sit amet"})
+EXPECTED_HERO = OrderedDict({"heroImage":
+                             OrderedDict((("image",
+                                           'https://tinyurl.com/yypszv2s'),
+                                          ("title", "Everyday Hero")))
+                             })
+EXPECTED_TITLE = OrderedDict({"title": "Section title"})
+EXPECTED_GROUP = OrderedDict({"startGroup": True})
+EXPECTED_ACTION = OrderedDict({"potentialAction": [
+                            OrderedDict((("@type", "HttpPOST"),
+                                         ("name", "Run tests"),
+                                         ("target",
+                                         "http://jenkins.com?action=trigger")))
+                                ]})
+
 
 def test_activity():
     e = EXPECTED_ACTIVITY
 
     section = CardSection()
-    section.set_activity(title=e['activityTitle'], subtitle=e['activitySubtitle'],
+    section.set_activity(title=e['activityTitle'],
+                         subtitle=e['activitySubtitle'],
                          image_url=e['activityImage'])
 
     assert section.json_payload == json.dumps(e)
@@ -106,7 +120,8 @@ def test_hero_image():
     section['hero_image'].set_title(e['heroImage']['title'])
     assert section.json_payload == json.dumps(e)
 
-    section = CardSection(hero_image={e['heroImage']['title']: e['heroImage']['image']})
+    section = CardSection(hero_image={e['heroImage']['title']:
+                                      e['heroImage']['image']})
     assert section.json_payload == json.dumps(e)
 
 
@@ -121,6 +136,28 @@ def test_title():
     assert section.json_payload == json.dumps(e)
 
 
+def test_start_group():
+    e = EXPECTED_TITLE
+    e.update(EXPECTED_GROUP)
+
+    section = CardSection()
+    section.set_title(e['title'])
+    section.start_group()
+    assert section.json_payload == json.dumps(e)
+
+
+def test_potential_actions():
+    e = EXPECTED_ACTION
+
+    section = CardSection()
+    with pytest.raises(TypeError):
+        section.add_potential_action(Fact('a', 'b'))
+    action = HttpPostAction(name=e['potentialAction'][0]['name'],
+                            target=e['potentialAction'][0]['target'])
+    section.add_potential_action(action)
+    assert section.json_payload == json.dumps(e)
+
+
 def test_total():
     e = EXPECTED_ACTIVITY
     e.update(EXPECTED_TITLE)
@@ -130,7 +167,8 @@ def test_total():
 
     section = CardSection()
     section = CardSection(title=e['title'])
-    section.set_activity(title=e['activityTitle'], subtitle=e['activitySubtitle'],
+    section.set_activity(title=e['activityTitle'],
+                         subtitle=e['activitySubtitle'],
                          image_url=e['activityImage'])
     for fact in e['facts']:
         section.add_fact(fact['name'], fact['value'])

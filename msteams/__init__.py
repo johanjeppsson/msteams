@@ -2,10 +2,10 @@
 
 """Wrapper objects for building and sending Message Cards."""
 
-from collections import OrderedDict, namedtuple
 import json
-import requests
-import types
+from collections import OrderedDict, namedtuple
+
+# import requests
 
 
 Field = namedtuple('Specification', ('expected_type', 'allow_iter'))
@@ -62,7 +62,7 @@ class CardObject(object):
         allow_iter = self._fields[field].allow_iter
 
         if _is_iter(value) and allow_iter:
-            wrong_types = [type(v) is not exp_type for v in value]
+            wrong_types = [not isinstance(v, exp_type) for v in value]
             if any(wrong_types):
                 wrong_type = type(value[wrong_types.index(True)])
                 raise TypeError('Got iterable containing object of incorrect '
@@ -99,14 +99,31 @@ class CardObject(object):
 
     def __str__(self):
         """Return a string representation of the CardObject."""
+        pop_fields = [k for k in self._fields.keys() if k in self._attrs]
         return '{}({})'.format(self.__class__.__name__,
-                               ', '.join(self._attrs.keys()))
+                               ', '.join(pop_fields))
 
     def __repr__(self):
         """Return a string representation of the CardObject."""
-        kv_paris = ['{} = {}'.format(k, v) for k, v in _viewitems(self._attrs)]
+        pop_fields = [k for k in self._fields.keys() if k in self._attrs]
+        kv_paris = ['{} = {}'.format(k, self._attrs[k]) for k in pop_fields]
         return '{}({})'.format(self.__class__.__name__,
                                ', '.join(kv_paris))
+
+    def __eq__(self, other):
+        """Check for equality by checking that all set fields are equal."""
+        if type(self) != type(other):
+            return False
+
+        for key in self._attrs.keys():
+            if key not in other._attrs or self[key] != other[key]:
+                return False
+
+        return True
+
+    def __ne__(self, other):
+        """Not equals check."""
+        return not self.__eq__(other)
 
     @property
     def payload(self):
@@ -209,6 +226,10 @@ class Fact(CardObject):
             facts.append(Fact(name, value))
         return facts
 
+    @classmethod
+    def from_OrderedDict(cls, d):
+        return Fact.from_dict(d)
+
 
 class UriTarget(CardObject):
     """Class wrapping a URI target.
@@ -240,6 +261,11 @@ class UriTarget(CardObject):
         for name, value in _viewitems(d):
             targets.append(UriTarget(name, value))
         return targets
+
+    @classmethod
+    def from_str(cls, s):
+        """Create list of UriTargets from string."""
+        return UriTarget('default', s)
 
 
 class Action(CardObject):
@@ -279,16 +305,7 @@ class OpenUriAction(Action):
         self._payload['@type'] = 'OpenUri'
 
         self._set_field('name', name)
-        target_list = []
-        if isinstance(targets, dict):
-            for os, uri in _viewitems(targets):
-                target_list.append(UriTarget(os=os, uri=uri))
-        elif isinstance(targets, str):
-            target_list.append(UriTarget(os='default', uri=targets))
-        else:
-            raise ValueError('Unexpected type for targets. Expected string or dict, got {}'
-                             .format(type(targets)))
-        self._set_field('targets', target_list)
+        self._set_field('targets', targets)
 
     def add_target(self, os, uri):
         """Add URI for a new target."""
@@ -349,21 +366,21 @@ class HttpPostAction(Action):
 
         https://docs.microsoft.com/en-us/outlook/actionable-messages/message-card-reference#httppost-action
 
-        >>> action = HttpPostAction(name='Run tests', target='http://jenkins.com?aciton=trigger')
+        >>> action = HttpPostAction(name='Run tests', target='http://jenkins.com?action=trigger')
         >>> print(action.json_payload)
-        {"@type": "HttpPOST", "name": "Run tests", "target": "http://jenkins.com?aciton=trigger"}
+        {"@type": "HttpPOST", "name": "Run tests", "target": "http://jenkins.com?action=trigger"}
         >>> action.set_headers({'Header name': 'Header value'})
         >>> print(action.json_payload)
-        {"@type": "HttpPOST", "name": "Run tests", "target": "http://jenkins.com?aciton=trigger", "headers": [{"name": "Header name", "value": "Header value"}]}
+        {"@type": "HttpPOST", "name": "Run tests", "target": "http://jenkins.com?action=trigger", "headers": [{"name": "Header name", "value": "Header value"}]}
         >>> action.add_header({'header2': 'value2'})
         >>> print(action.json_payload)
-        {"@type": "HttpPOST", "name": "Run tests", "target": "http://jenkins.com?aciton=trigger", "headers": [{"name": "Header name", "value": "Header value"}, {"name": "header2", "value": "value2"}]}
+        {"@type": "HttpPOST", "name": "Run tests", "target": "http://jenkins.com?action=trigger", "headers": [{"name": "Header name", "value": "Header value"}, {"name": "header2", "value": "value2"}]}
         >>> action.set_body('Body content')
         >>> print(action.get_payload(fmt='json', indent=4))
         {
             "@type": "HttpPOST",
             "name": "Run tests",
-            "target": "http://jenkins.com?aciton=trigger",
+            "target": "http://jenkins.com?action=trigger",
             "headers": [
                 {
                     "name": "Header name",
@@ -391,11 +408,8 @@ class HttpPostAction(Action):
     def add_header(self, header):
         """Add header to header list."""
         header_list = self._attrs.get('headers', [])
-        if isinstance(header, dict):
-            assert(len(header) == 1)
-            name = next(iter(header.keys()))
-            header = Header(name=name, value=header[name])
-        header_list.append(header)
+        header = self._check_value('headers', header)
+        header_list.extend(header)
         self._set_field('headers', header_list)
 
     def set_body(self, body):
@@ -416,9 +430,9 @@ class CardSection(CardObject):
     _fields = OrderedDict((
                 ('title',             Field(str, False)),
                 ('start_group',       Field(bool, False)),
-                ('activity_image',    Field(str, False)),
                 ('activity_title',    Field(str, False)),
                 ('activity_subtitle', Field(str, False)),
+                ('activity_image',    Field(str, False)),
                 ('activity_text',     Field(str, False)),
                 ('hero_image',        Field(ImageObject, False)),
                 ('text',              Field(str, False)),
@@ -509,12 +523,12 @@ class MessageCard(CardObject):
     https://docs.microsoft.com/en-us/outlook/actionable-messages/message-card-reference
     """
     _fields = OrderedDict((
-                ('summary',           Field(str, False)),
-                ('title',             Field(str, False)),
-                ('text',              Field(str, False)),
-                ('theme_color',       Field(str, False)),
-                ('sections',          Field(CardSection, True)),
-                ('potential_actions', Field(Action, True)),
+                ('summary',          Field(str, False)),
+                ('title',            Field(str, False)),
+                ('text',             Field(str, False)),
+                ('theme_color',      Field(str, False)),
+                ('sections',         Field(CardSection, True)),
+                ('potential_action', Field(Action, True)),
                 ))
 
     def __init__(self, **kwargs):
@@ -574,33 +588,33 @@ class MessageCard(CardObject):
 
         potential_actions -- List/tuple of PotentialAction objects.
         """
-        self._set_field('potential_action', potential_action)
+        self._set_field('potential_action', potential_actions)
 
     def add_potential_action(self, potential_action):
         """Append a PotentialAction object to the card."""
-        potential_actions = self._attrs.get('potential_actions', [])
+        potential_actions = self._attrs.get('potential_action', [])
         potential_actions.append(potential_action)
-        self._set_field('potential_actions', potential_actions)
+        self._set_field('potential_action', potential_actions)
 
 
-def send_message(card, channel):
+# def send_message(card, channel):
 
-    url = URL_MAP.get(channel, None)
-    if url is None:
-        raise ValueError('Invalid channel "{}". Supported channels are {}'
-                         .format(channel, url_map.keys()))
+#     url = URL_MAP.get(channel, None)
+#     if url is None:
+#         raise ValueError('Invalid channel "{}". Supported channels are {}'
+#                          .format(channel, url_map.keys()))
 
-    print(json.dumps(card.get_payload(), indent=4))
+#     print(json.dumps(card.get_payload(), indent=4))
 
-    response = requests.post(
-        url, data=json.dumps(card.get_payload()),
-        headers={'Content-Type': 'application/json'},
-        proxies=PROXIES)
+#     response = requests.post(
+#         url, data=json.dumps(card.get_payload()),
+#         headers={'Content-Type': 'application/json'},
+#         proxies=PROXIES)
 
-    if response.status_code != requests.codes.ok:
-        raise ValueError(
-            'Request to mattermost returned an error %s, the response is:\n%s'
-            % (response.status_code, response.text))
+#     if response.status_code != requests.codes.ok:
+#         raise ValueError(
+#             'Request to mattermost returned an error %s, the response is:\n%s'
+#             % (response.status_code, response.text))
 
 
 if __name__ == '__main__':
@@ -609,10 +623,10 @@ if __name__ == '__main__':
     # card = MessageCard(title='Descriptive title')
     # card.set_summary('Brief summary')
     # section = CardSection(title='Section title')
-    # section.set_hero_image('http://url', title='asdf')
+    # section.set_hero_image({'asdf': 'http://url'})
     # section.set_facts({'fact1': 'a', 'fact2': 'b'})
     # section.add_fact('fact3', 'c')
-    # section.add_fact(Fact('fact4', 'd'))
+    # # section.add_fact(Fact('fact4', 'd'))
     # action = OpenUriAction('Open github', 'http://github.com')
     # action.add_target('android', 'http://m.github.com')
     # section.add_potential_action(action)
@@ -623,7 +637,7 @@ if __name__ == '__main__':
     # section.add_potential_action(post_action)
 
     # card.add_section(section)
-    # print(card.payload)
-    # print(card.json_payload)
+    # # print(card.payload)
+    # # print(card.json_payload)
     # print(json.dumps(card.payload, indent=4))
-    # print(isinstance(OrderedDict(), dict))
+    # # print(isinstance(OrderedDict(), dict))
