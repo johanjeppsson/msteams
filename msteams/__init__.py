@@ -5,11 +5,21 @@
 import json
 from collections import OrderedDict, namedtuple
 
-# import requests
+try:
+    # Python 3
+    from urllib.parse import urlparse, urlencode
+    from urllib.request import urlopen, Request
+    from urllib.error import HTTPError
+except ImportError:
+    # Fallback to python 2
+    from urlparse import urlparse
+    from urllib import urlencode
+    from urllib2 import urlopen, Request, HTTPError
 
 
-Field = namedtuple('Specification', ('expected_type', 'allow_iter'))
-Field.__new__.__defaults__ = (None, False)
+Field = namedtuple('Specification', ('expected_type', 'allow_iter',
+                                     'valid_values'))
+Field.__new__.__defaults__ = (None, False, None)
 
 
 def _snake_to_dromedary_case(string):
@@ -60,6 +70,7 @@ class CardObject(object):
 
         exp_type = self._fields[field].expected_type
         allow_iter = self._fields[field].allow_iter
+        valid_values = self._fields[field].valid_values
 
         if _is_iter(value) and allow_iter:
             wrong_types = [not isinstance(v, exp_type) for v in value]
@@ -77,6 +88,11 @@ class CardObject(object):
                 raise TypeError('Got argument of wrong type ({}). Expected {}'
                                 .format(type(value), exp_type))
             value = getattr(exp_type, conv_name)(value)
+
+        if valid_values is not None and value not in valid_values:
+            raise ValueError('Got invalid value for {}: ({}). '
+                             'Valid values are {}'
+                             .format(field, value, valid_values))
 
         if not _is_iter(value) and allow_iter:
             value = [value]
@@ -419,6 +435,145 @@ class HttpPostAction(Action):
     def set_body_content_type(self, body_content_type):
         """Set body for HttpPostAction."""
         self._set_field('body_content_type', body_content_type)
+
+
+class Input(CardObject):
+    """
+    Class representing an Input object.
+    https://docs.microsoft.com/en-us/outlook/actionable-messages/message-card-reference#inputs
+    """
+
+    _fields = OrderedDict((
+                ('id',          Field(str, False)),
+                ('is_required', Field(bool, False)),
+                ('title',       Field(str, False)),
+                ('value',       Field(str, False)),
+              ))
+
+
+    def set_id(self, id):
+        """Set input id."""
+        self._set_field('id', id)
+
+    def set_is_required(self, is_required):
+        """Set isRequired for input."""
+        self._set_field('is_required', is_required)
+
+    def set_title(self, title):
+        """Set title for input."""
+        self._set_field('title', title)
+
+    def set_value(self, value):
+        """Set value for input."""
+        self._set_field('value', value)
+
+
+class TextInput(Input):
+    """
+    Class representing a TextInput field.
+    https://docs.microsoft.com/en-us/outlook/actionable-messages/message-card-reference#textinput
+    """
+
+    def __init__(self, **kwargs):
+        sub_fields = OrderedDict((('is_multiline', Field(bool, False)),
+                                  ('max_length', Field(int, False))
+                                   ))
+        self._fields.update(sub_fields)
+        super(TextInput, self).__init__(**kwargs)
+
+        self._payload['@type'] = 'TextInput'
+
+    def set_is_multiline(self, is_multiline):
+        """Set isMultiline for input."""
+        self._set_field('is_multiline', is_multiline)
+
+    def set_max_length(self, max_length):
+        """Set maxLength for input."""
+        self._set_field('max_length', max_length)
+
+
+class DateInput(Input):
+    """
+    Class representing a DateInput field.
+    https://docs.microsoft.com/en-us/outlook/actionable-messages/message-card-reference#dateinput
+    """
+
+    def __init__(self, **kwargs):
+        self._fields['include_time'] = Field(bool, False)
+        super(DateInput, self).__init__(**kwargs)
+
+        self._payload['@type'] = 'DateInput'
+
+    def set_include_time(self, include_time):
+        """Set includeTime for DateInput."""
+        self._set_field('include_time', include_time)
+
+
+class Choice(CardObject):
+    """
+    Class representing a key/value pair as a choice for MultipleChoiceInput.
+    """
+    _fields = OrderedDict((
+                ('display', Field(str, False)),
+                ('value', Field(str, False)),
+                ))
+
+    def __init__(self, display, value):
+        """
+        Create choice object.
+
+        >>> c = Choice('Choice 1', '1')
+        >>> print(c.json_payload)
+        {"display": "Choice 1", "value": "1"}
+        """
+        super(Choice, self).__init__()
+
+        self._set_field('display', display)
+        self._set_field('value', value)
+
+    @classmethod
+    def from_dict(cls, d):
+        """Create list of choices from dict."""
+        choices = []
+        for display, value in _viewitems(d):
+            choices.append(Choice(display, value))
+        return choices
+
+
+class MultipleChoiceInput(Input):
+    """
+    Class representing a MultipleChoiseInput.
+    https://docs.microsoft.com/en-us/outlook/actionable-messages/message-card-reference#multichoiceinput
+    """
+
+    def __init__(self, **kwargs):
+        sub_fields = OrderedDict((('choices', Field(Choice, True)),
+                                  ('is_multi_select', Field(bool, False)),
+                                  ('style', Field(str, False, ['normal', 'expanded']))
+                                   ))
+        self._fields.update(sub_fields)
+        super(MultipleChoiceInput, self).__init__(**kwargs)
+
+        self._payload['@type'] = 'MultipleChoiceInput'
+
+    def set_choices(self, choices):
+        """Set choices for input."""
+        self._set_field('choices', choices)
+
+    def add_choices(self, choice):
+        """Append choices to list."""
+        choice = self._check_value('choices', choice)
+        choice_list = list(self._attrs.get('choices', []))
+        choice_list.extend(choice)
+        self._set_field('choices', choice_list)
+
+    def set_is_multi_select(self, is_multi_select):
+        """Set isMultiSelect for intput."""
+        self._set_field('is_multi_select', is_multi_select)
+
+    def set_style(self, style):
+        """Set style."""
+        self._set_field('style', style)
 
 
 class CardSection(CardObject):
