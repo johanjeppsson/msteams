@@ -3,7 +3,7 @@ from collections import OrderedDict
 
 import pytest
 
-from msteams import HttpPostAction, OpenUriAction
+from msteams import HttpPostAction, OpenUriAction, TextInput, ActionCard
 
 
 def _get_exp_uri():
@@ -27,6 +27,29 @@ def _get_exp_post():
             ("@type", "HttpPOST"),
             ("name", "Run tests"),
             ("target", "http://jenkins.com?action=trigger"),
+        )
+    )
+
+
+def _get_exp_actioncard():
+    """Return the expecdet basic result for ActionCard."""
+    return OrderedDict(
+        (
+            ("@type", "ActionCard"),
+            ("name", "Comment"),
+            ("inputs", [OrderedDict((("@type", "TextInput"), ("id", "comment")))]),
+            (
+                "actions",
+                [
+                    OrderedDict(
+                        (
+                            ("@type", "HttpPOST"),
+                            ("name", "Action's name prop."),
+                            ("target", "https://yammer.com/comment?postId=123"),
+                        )
+                    )
+                ],
+            ),
         )
     )
 
@@ -76,3 +99,27 @@ def test_http_post_action():
     e["bodyContentType"] = "BodyContentType"
     hpa.set_body_content_type(e["bodyContentType"])
     assert hpa.json_payload == json.dumps(e)
+
+
+def test_action_card():
+    e = _get_exp_actioncard()
+
+    ip = TextInput(id=e["inputs"][0]["id"])
+    post = HttpPostAction(
+        name=e["actions"][0]["name"], target=e["actions"][0]["target"]
+    )
+
+    card = ActionCard(name=e["name"], inputs=ip, actions=post)
+    assert card.json_payload == json.dumps(e)
+
+    card = ActionCard(name=e["name"], inputs=ip, actions=post)
+    card.set_name(e["name"])
+    card.set_inputs(ip)
+    card.set_actions(post)
+    assert card.json_payload == json.dumps(e)
+
+    card = ActionCard(name=e["name"], inputs=ip, actions=post)
+    card.set_name(e["name"])
+    card.add_inputs(ip)
+    card.add_actions(post)
+    assert card.json_payload == json.dumps(e)

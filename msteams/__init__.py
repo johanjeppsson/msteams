@@ -81,7 +81,7 @@ class CardObject(object):
                 )
             return value
 
-        if type(value) is not exp_type:
+        if not isinstance(value, exp_type):
             # Try to find converter
             conv_name = "from_{}".format(type(value).__name__)
             if not hasattr(exp_type, conv_name):
@@ -571,6 +571,50 @@ class MultipleChoiceInput(Input):
     def set_style(self, style):
         """Set style."""
         self._set_field("style", style)
+
+
+class ActionCard(Action):
+    """
+    Class representing an ActionCard.
+    https://docs.microsoft.com/en-us/outlook/actionable-messages/message-card-reference#actioncard-action
+    """
+
+    _fields = OrderedDict(
+        (
+            ("name", Field(str, False)),
+            ("inputs", Field(Input, True)),
+            ("actions", Field(Action, True)),
+        )
+    )
+
+    def __init__(self, **kwargs):
+        super(ActionCard, self).__init__(**kwargs)
+        self._payload["@type"] = "ActionCard"
+
+    def set_name(self, name):
+        """Set name."""
+        self._set_field("name", name)
+
+    def set_inputs(self, inputs):
+        self._set_field("inputs", inputs)
+
+    def add_inputs(self, inputs):
+        """Append inputs to ActionCard."""
+        inputs = self._check_value("inputs", inputs)
+        input_list = list(self._attrs.get("inputs", []))
+        input_list.extend(inputs)
+        self._set_field("inputs", inputs)
+
+    def set_actions(self, actions):
+        """Set action list for ActionCard."""
+        self._set_field("actions", actions)
+
+    def add_actions(self, actions):
+        """Append actions to ActionCard."""
+        actions = self._check_value("actions", actions)
+        action_list = list(self._attrs.get("actions", []))
+        action_list.extend(actions)
+        self._set_field("actions", actions)
 
 
 class CardSection(CardObject):
