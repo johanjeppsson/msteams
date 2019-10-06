@@ -5,9 +5,9 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="msteams",
-    version="0.1.0",
+    version="0.0.1",
     author="Johan Jeppsson",
-    author_email="johjep@example.com",
+    author_email="johjep@gmail.com",
     description="A builder/formatter for MS Teams cards",
     long_description=long_description,
     long_description_content_type="text/markdown",
