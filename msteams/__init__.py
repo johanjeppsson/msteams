@@ -803,8 +803,8 @@ class MessageCard(CardObject):
             request.install_opener(opener)
 
         req = request.Request(
-            url,
-            data=payload.encode("utf-8"),
+            connector_url,
+            data=self.json_payload.encode("utf-8"),
             headers={"Content-Type": "application/json"},
         )
         request.urlopen(req)
