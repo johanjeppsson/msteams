@@ -12,6 +12,7 @@ except ImportError:
     # Fallback to python 2
     import urllib2 as request
 
+__version__ = "0.1.0"
 
 Field = namedtuple("Specification", ("expected_type", "allow_iter", "valid_values"))
 Field.__new__.__defaults__ = (None, False, None)

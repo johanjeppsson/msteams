@@ -1,11 +1,17 @@
 import setuptools
+import re
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
+version = re.search(
+    r"""__version__\s*=\s*[\'"]([^\'"]*)[\'"]""",
+    open("msteams/__init__.py", "r").read(),
+).group(1)
+
 setuptools.setup(
     name="msteams",
-    version="0.0.1",
+    version=version,
     author="Johan Jeppsson",
     author_email="johjep@gmail.com",
     description="A builder/formatter for MS Teams cards",
