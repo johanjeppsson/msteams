@@ -7,14 +7,10 @@ from collections import OrderedDict, namedtuple
 
 try:
     # Python 3
-    from urllib.parse import urlparse, urlencode
-    from urllib.request import urlopen, Request
-    from urllib.error import HTTPError
+    from urllib import request
 except ImportError:
     # Fallback to python 2
-    from urlparse import urlparse
-    from urllib import urlencode
-    from urllib2 import urlopen, Request, HTTPError
+    import urllib2 as request
 
 
 Field = namedtuple("Specification", ("expected_type", "allow_iter", "valid_values"))
@@ -796,49 +792,25 @@ class MessageCard(CardObject):
         potential_actions.append(potential_action)
         self._set_field("potential_action", potential_actions)
 
+    def send(self, connector_url, proxy=None):
+        """Send message card to Microsoft Teams webhook connector."""
 
-# def send_message(card, channel):
+        if proxy is not None:
+            if not isinstance(proxy, dict):
+                proxy = {"https": proxy}
+            proxy_handler = request.ProxyHandler(proxy)
+            opener = request.build_opener(proxy_handler)
+            request.install_opener(opener)
 
-#     url = URL_MAP.get(channel, None)
-#     if url is None:
-#         raise ValueError('Invalid channel "{}". Supported channels are {}'
-#                          .format(channel, url_map.keys()))
-
-#     print(json.dumps(card.get_payload(), indent=4))
-
-#     response = requests.post(
-#         url, data=json.dumps(card.get_payload()),
-#         headers={'Content-Type': 'application/json'},
-#         proxies=PROXIES)
-
-#     if response.status_code != requests.codes.ok:
-#         raise ValueError(
-#             'Request to mattermost returned an error %s, the response is:\n%s'
-#             % (response.status_code, response.text))
+        req = request.Request(
+            url,
+            data=payload.encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+        request.urlopen(req)
 
 
 if __name__ == "__main__":
     import doctest
 
     doctest.testmod()
-    # card = MessageCard(title='Descriptive title')
-    # card.set_summary('Brief summary')
-    # section = CardSection(title='Section title')
-    # section.set_hero_image({'asdf': 'http://url'})
-    # section.set_facts({'fact1': 'a', 'fact2': 'b'})
-    # section.add_fact('fact3', 'c')
-    # # section.add_fact(Fact('fact4', 'd'))
-    # action = OpenUriAction('Open github', 'http://github.com')
-    # action.add_target('android', 'http://m.github.com')
-    # section.add_potential_action(action)
-
-    # post_action = HttpPostAction('Send comment', 'http://comment.com')
-    # post_action.set_headers({'http': 'yes', 'some_header': 'false'})
-    # post_action.add_header(Header('asdf', 'fdas'))
-    # section.add_potential_action(post_action)
-
-    # card.add_section(section)
-    # # print(card.payload)
-    # # print(card.json_payload)
-    # print(json.dumps(card.payload, indent=4))
-    # # print(isinstance(OrderedDict(), dict))
