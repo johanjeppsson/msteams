@@ -61,3 +61,8 @@ def img(url, alt_text=None):
     """Return formatted embedded image."""
     alt = ' alt="{}"'.format(alt_text) if alt_text is not None else ""
     return '<img src="{}"{}></img>'.format(url, alt)
+
+
+def paragraph(s):
+    """Return formatted paragraph."""
+    return _tag(s, "p")
