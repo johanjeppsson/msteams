@@ -728,7 +728,7 @@ class MessageCard(CardObject):
         )
     )
 
-    def __init__(self, **kwargs):
+    def __init__(self, summary="Summary", **kwargs):
         """Create a new MessageCard.
 
         Keyword arguments:
@@ -750,6 +750,8 @@ class MessageCard(CardObject):
 
         self._payload["@type"] = "MessageCard"
         self._payload["@context"] = "https://schema.org/extensions"
+
+        self.set_summary(summary)
 
     def set_summary(self, summary):
         """Set the summary line for the card."""

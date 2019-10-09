@@ -27,7 +27,11 @@ EXP_ACTION = {
 def _get_exp_card():
     """Return expected basic result for MessageCard."""
     return OrderedDict(
-        (("@type", "MessageCard"), ("@context", "https://schema.org/extensions"))
+        (
+            ("@type", "MessageCard"),
+            ("@context", "https://schema.org/extensions"),
+            ("summary", "Summary"),
+        )
     )
 
 
