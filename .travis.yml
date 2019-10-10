@@ -4,8 +4,9 @@ python:
     - 3.7
 
 install:
-    - pip install black
-    - pip install pytest
+    - pip install -r test-requirements.txt
 
 script:
-    - python -m pytest
+    - python -m pytest --cov=msteams/
+after_success:
+    - coveralls
