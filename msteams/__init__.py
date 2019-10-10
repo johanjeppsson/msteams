@@ -811,4 +811,3 @@ class MessageCard(CardObject):
             headers={"Content-Type": "application/json"},
         )
         request.urlopen(req)
-
