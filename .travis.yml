@@ -9,6 +9,6 @@ install:
     - pip install -r test-requirements.txt
 
 script:
-    - python -m pytest --cov=msteams/
+    - python -m pytest --black --cov=msteams --doctest-modules
 after_success:
     - coveralls
