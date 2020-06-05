@@ -810,4 +810,4 @@ class MessageCard(CardObject):
             data=self.json_payload.encode("utf-8"),
             headers={"Content-Type": "application/json"},
         )
-        request.urlopen(req)
+        return request.urlopen(req)
